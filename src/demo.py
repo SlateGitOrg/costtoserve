@@ -35,8 +35,8 @@ def main() -> None:
     print("  " + "-" * 76)
     print(f"    {len(negative)} of the top 50 accounts by revenue are")
     print("    contribution-NEGATIVE under activity-based drivers.")
-    print(f"    Of those, {len(flippers)} change SIGN depending on the")
-    print("    allocation choice.\n")
+    print(f"    Separately, {len(flippers)} of those top 50 change SIGN")
+    print("    depending on which allocation driver you accept.\n")
 
     print("  Accounts whose profitability depends on an allocation decision:")
     print(f"    {'customer':<18}{'segment':<20}{'revenue':>12}"
