@@ -1,7 +1,5 @@
 """Activity-based cost-to-serve, with the allocation argument built in.
 
-THE DIFFERENTIATOR LIVES HERE.
-
 Every activity-based costing model rests on contestable allocation choices. Is
 last-mile cost driven per stop, per parcel, or per kilometre? All three are
 defensible, they give different answers, and a model that picks one and

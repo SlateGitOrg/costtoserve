@@ -19,7 +19,7 @@ class Base(unittest.TestCase):
 
 
 class TestReconciliation(Base):
-    def test_THE_SILENT_BUG_every_driver_set_allocates_100_percent(self):
+    def test_silent_leakage_every_driver_set_allocates_100_percent(self):
         for label, driver_set in DRIVER_SETS.items():
             with self.subTest(driver_set=label):
                 allocations = allocate(self.customers, driver_set)
@@ -56,7 +56,7 @@ class TestReconciliation(Base):
 
 
 class TestSensitivity(Base):
-    def test_THE_DIFFERENTIATOR_some_customers_flip_sign(self):
+    def test_some_customers_flip_sign(self):
         flippers = [s for s in self.sens if s.sign_flips]
         self.assertGreater(
             len(flippers), 0,

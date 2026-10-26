@@ -1,139 +1,115 @@
 # costtoserve
 
-> Activity-based cost-to-serve that reports which customers change profitability sign depending on the allocation driver.
+Activity-based cost-to-serve for a parcel carrier, with allocation-driver sensitivity: it reports which customers change profitability sign depending on how cost is allocated.
 
-`FLAGSHIP` · **Business Analyst** · Advanced · ~4 weeks · Logistics - regional parcel carrier
+[![ci](https://github.com/SlateGitOrg/costtoserve/actions/workflows/ci.yml/badge.svg)](https://github.com/SlateGitOrg/costtoserve/actions/workflows/ci.yml)
 
-**Primary language:** SQL
-**Tags:** `activity-based-costing`, `dbt`, `postgis`, `sql`, `sensitivity-analysis`, `profitability`
+## Why
 
----
+A carrier that prices by weight and zone tends to assume every customer above a revenue threshold is profitable. A customer with many small rural deliveries, frequent redelivery attempts and a high claims rate can be loss-making while ranking as a top account by revenue.
 
-> **Implementation note.** The catalogue specifies **SQL** for this
-> project and that remains the target. This repository ships a runnable
-> **Python** reference implementation of the core differentiator so the
-> behaviour is executable and tested today; port it to SQL as step one
-> of your own build.
+Activity-based costing (ABC) exposes this, but every ABC model rests on contestable choices: is last-mile cost driven per stop, per parcel or per kilometre? A model that picks one driver set and publishes a single ranked list invites an argument it cannot win. costtoserve runs the same cost pools under several defensible driver sets and reports where the answer depends on the choice.
 
-## The problem
+## Features
 
-A carrier prices by weight and zone and believes every customer above a revenue threshold is profitable. In reality a customer with many small rural deliveries, frequent redelivery attempts and a high claims rate can be substantially loss-making while appearing as a top-ten account on the revenue report - and the commercial team is incentivised to win more of them.
+- **Activity model as data.** Cost pools, candidate drivers and named driver sets are plain dictionaries in `src/model.py`; adding a driver set needs no code change.
+- **Exact reconciliation.** Every pool is fully distributed under every driver set, and `leakage()` measures any cost that goes missing (it is zero in the tests).
+- **Customer contribution** per driver set: revenue minus allocated cost, with the per-pool breakdown kept for traceability.
+- **Sensitivity harness.** Per customer: contribution and rank under each driver set, rank spread, and a `sign_flips` flag when profitability changes sign between driver sets.
+- **Synthetic fixture.** A seeded generator of 200 customers across three segments (national retail, e-commerce SME, rural specialist) with known cost behaviour.
+- **Standard library only.** No dependencies to install.
 
-## ⭐ The differentiator
+## Architecture
 
-Activity-based costing with **explicit allocation-driver sensitivity analysis**. Every ABC model rests on contestable allocation choices - per-stop versus per-parcel versus per-kilometre - so this one reports how customer profitability rankings *change* under each defensible driver set, and flags customers whose profitability **sign** is driver-dependent. A generic ABC model picks one driver set, presents a single ranked list as fact, and is destroyed in the first stakeholder meeting by someone who disagrees with the allocation.
-
-This is the sentence to lead with when someone asks you to walk through the
-project. Everything else in this repo exists to make it true and to prove it.
-
-## Data
-
-A documented synthetic generator producing shipment-level events (pickup, sort, linehaul, last-mile, redelivery, claim) with a **known true cost structure**, plus public sources - US Census County Business Patterns and OpenStreetMap road networks - for geographic and density realism.
-
-> No paid API key is required to run or demo this project. Where a paid
-> service would add value it is wired as an optional enhancement behind an
-> interface with an offline mock as the default implementation.
-
-## Stack
-
-- PostgreSQL + PostGIS - the SQL and the data model are the artefact
-- dbt with tests
-- Python for the sensitivity harness
-- Metabase or Streamlit for the output
-- dbt tests + pytest
-
-## Core capabilities
-
-- Activity model - cost pools, drivers and rates - all versioned and expressed as data, not hard-coded
-- Shipment-level cost build-up with full traceability from total cost back to each pool
-- Customer and lane profitability with a contribution-margin waterfall
-- Driver-sensitivity harness reporting rank stability and sign-flip customers
-- Rural/urban density segmentation derived from real road-network geography
-
-## Repository layout
-
-```
-models/staging/
-models/activities/
-models/marts/
-sensitivity/
-generator/
-dbt_tests/
-app/
+```mermaid
+flowchart LR
+  G["generate()<br/>seeded customers"] --> A
+  P["COST_POOLS<br/>scaled_pools()"] --> A
+  D["DRIVER_SETS<br/>activity / parcel_centric / distance_centric"] --> A
+  A["allocate()<br/>pool x driver share"] --> L["leakage()<br/>reconciliation check"]
+  A --> S["sensitivity()<br/>contribution + rank per driver set"]
+  S --> R["src.demo<br/>report"]
 ```
 
-## Build plan
+`allocate()` spreads each cost pool across customers in proportion to the chosen driver. `sensitivity()` calls it once per driver set, ranks customers by contribution under each, and collects the results per customer. `src/demo.py` prints the reconciliation check and the findings. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design notes.
 
-1. Generator with a known true cost structure. You cannot validate an allocation without one.
-2. Activity model as data. If drivers are hard-coded in SQL, the sensitivity analysis is impossible - which is why most ABC models never do one.
-3. Cost build-up, then reconciliation. Reconcile before you rank.
-4. Sensitivity harness last; it is the differentiator and it depends on everything above.
+## Quick start
 
-## Testing strategy
-
-Assert allocated costs **reconcile exactly to total cost with zero leakage under every driver set** - unallocated cost silently vanishing is the most common and most damaging ABC bug. Assert recovered per-unit costs match the generator's true values within tolerance.
-
-Tests assert **correctness**, not merely that the code runs. A green suite on
-this repo is a claim about behaviour under adversarial conditions; treat any
-test that would pass against a deliberately broken implementation as a bug in
-the test.
-
-## Quality & safety layer
-
-Every profitability figure carries the driver set that produced it. The tool will not emit a customer ranking without also emitting its sensitivity.
-
-## Measurable outcome
-
-> Eleven of the top-50 accounts by revenue are contribution-negative, and four of those flip sign depending on allocation driver - so the report names which four need a commercial decision rather than a modelling decision.
-
-State it in these terms — business units, not technical ones — in your CV
-bullet and in the first thirty seconds of describing the project.
-
-## Interview questions this project answers
-
-- **What allocation driver did you choose and why?**
-- **How do you defend an ABC model against a stakeholder who disagrees with the allocation?**
-- **What is a sign-flip customer and what do you do about one?**
-
-## What this deliberately is *not*
-
-- Not a general ledger. It models cost to serve and reconciles to a total you supply.
-- Not a pricing tool - it is the input to one.
-
-
-## Run it now
+Requires Python 3.11+. Nothing to install.
 
 ```bash
-python -m unittest discover -s tests -v   # the suite
-python -m src.demo                        # the 60-second artefact
-```
-
-Requires Python 3.11+. The runnable core uses **only the standard
-library** (including `sqlite3`), so there is nothing to install.
-
-## Getting started
-
-```bash
-git clone <your-fork-url> costtoserve
+git clone https://github.com/SlateGitOrg/costtoserve.git
 cd costtoserve
-docker compose up -d          # Postgres + PostGIS
-python -m generator --shipments 2000000
-dbt build
-python -m sensitivity run --drivers config/drivers.yaml
-dbt test && pytest
+python -m src.demo                        # run the analysis on the fixture
+python -m unittest discover -s tests -v   # run the tests
 ```
 
-Docker is supported but optional — every path above works on a plain
-Windows/macOS/Linux laptop without a cloud account.
+## Example output
 
-## Definition of done
+`python -m src.demo` (trimmed):
 
-- [ ] The differentiator above is implemented, and a test proves it
-- [ ] The measurable outcome is produced by a command anyone can run
-- [ ] `README` explains the one decision a generic version gets wrong
-- [ ] CI runs the full suite on every push and is green on `main`
-- [ ] A recruiter can see the headline artefact in under 60 seconds
+```text
+  200 customers, GBP 16,042,011 revenue, GBP 13,796,129 cost to allocate.
 
-## Licence
+  Reconciliation:
+    activity           unallocated: GBP    -0.000000
+    parcel_centric     unallocated: GBP    -0.000000
+    distance_centric   unallocated: GBP    -0.000000
+
+    12 of the top 50 accounts by revenue are
+    contribution-NEGATIVE under activity-based drivers.
+    Separately, 19 of those top 50 change SIGN
+    depending on which allocation driver you accept.
+
+    customer          segment                  revenue       worst        best
+    Rothwell 197      rural_specialist       1,828,161    -423,547     366,724
+    Lindmoor 079      rural_specialist         839,948    -466,394      80,119
+
+  Segment view (activity drivers):
+    ecommerce_sme              108        23.9%
+    retail_national             46        57.6%
+    rural_specialist            46       -18.4%
+```
+
+These figures come from the synthetic fixture (seed `20260911`), not from real carrier data.
+
+## How it works
+
+- **Pools and drivers.** Seven cost pools (pickup, sortation, linehaul, last mile, redelivery, claims, customer service), each with two or three candidate drivers such as `stops`, `parcels`, `weight_kg` or `parcel_km`.
+- **Driver sets.** `activity` follows the physical cause of each cost; `parcel_centric` spreads most pools per parcel (how many rate cards behave); `distance_centric` leans on distance.
+- **Pool scaling.** `scaled_pools()` scales the pool totals so the whole book earns a 14% margin, keeping the relative pool sizes. Without it the fixture sits at break-even and every rank churns, which makes the sensitivity look like noise.
+- **Sign flips versus rank movement.** A rank change is expected; a sign change means the account's profitability depends on an allocation judgement, so it is flagged for a commercial decision rather than reported as a costing result.
+
+## Testing
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+The 17 tests cover:
+
+- zero leakage under every driver set, and full distribution of each pool;
+- a customer with no activity absorbs no cost, and allocation traces back to pools;
+- sign flips exist, ranks move between driver sets, and ranks are a permutation under each set;
+- high-revenue accounts can be contribution-negative, and rural accounts cost more under activity drivers;
+- every pool has at least two drivers, and a new driver set works without code changes.
+
+## Project layout
+
+```text
+src/model.py       pools, drivers, allocation, sensitivity, fixture generator
+src/demo.py        the analysis report
+tests/             unittest suite
+docs/              architecture and design notes
+```
+
+## Limitations
+
+- Python reference implementation over synthetic data; there is no database, dbt layer or real shipment feed.
+- Driver sets are hand-defined, not estimated from data.
+- The cost pools are fixture values; real use needs the carrier's P&L totals.
+- Sensitivity covers three driver sets, not the full combination of drivers.
+
+## License
 
 MIT — see [LICENSE](LICENSE).
